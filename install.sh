@@ -314,7 +314,7 @@ install_core_packages() {
          plasma-desktop plasma-workspace plasma-integration plasma-pa \
          kwin-x11 kdecoration breeze breeze-icons \
          konsole dolphin kio-extras kde-cli-tools \
-         xorg-xrandr xkeyboard-config"
+         xorg-xrandr xkeyboard-config openbox qt6ct"
 }
 
 install_gpu_packages() {
@@ -541,6 +541,125 @@ BCOMP
     print_success "Wrote bash completion for kdestart."
 }
 
+create_kdapp() {
+    local f="$TERMUX_PREFIX/bin/kdapp"
+    print_msg "Writing $BOLD$f$NC"
+    cat > "$f" <<'KAPPEOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# kdapp - launch ONE app in a lightweight Termux:X11 session (no full Plasma).
+# Adds a minimal Openbox window manager (resize/move) + qt6ct theming.
+#   kdapp konsole | kdapp dolphin | kdapp chromium
+# PITFALL: never `pkill -f <app>` here — the script could match its own args
+# and self-kill (the launch-konsole.sh bug). Match the -xstartup pattern only.
+set -uo pipefail
+
+readonly TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+readonly TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
+readonly LOG_FILE="$TERMUX_HOME/kdapp-session.log"
+readonly APP="${1:-konsole}"
+
+: > "$LOG_FILE"
+log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+log "Starting single-app session: $APP"
+
+pkill -f "exit-with-session $APP" 2>/dev/null
+pkill -f "termux-x11 :1" 2>/dev/null
+sleep 1
+rm -f "$TERMUX_PREFIX/tmp/.X1-lock" "$TERMUX_PREFIX/tmp/.X11-unix/X1" 2>/dev/null
+
+export DISPLAY=:1
+export XDG_RUNTIME_DIR="$TERMUX_HOME/.runtime"
+mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+
+if command -v qt6ct >/dev/null 2>&1; then
+    export QT_QPA_PLATFORMTHEME=qt6ct
+fi
+
+pulseaudio --kill 2>/dev/null; sleep 1
+rm -rf "$TERMUX_HOME/.config/pulse"
+mkdir -p "$TMPDIR/pulse"; chmod 700 "$TMPDIR/pulse"
+export PULSE_RUNTIME_PATH="$TMPDIR/pulse"
+unset PULSE_SERVER
+pulseaudio --start --exit-idle-time=-1 --disable-shm=1 \
+    --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
+    >>"$LOG_FILE" 2>&1
+sleep 1
+export PULSE_SERVER=127.0.0.1
+
+log "Launching termux-x11 :1 with Openbox + $APP..."
+termux-x11 :1 -xstartup \
+    "dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'" \
+    >>"$LOG_FILE" 2>&1 &
+X11_PID=$!
+
+SOCKET="$TERMUX_PREFIX/tmp/.X11-unix/X1"
+for i in $(seq 1 20); do
+    [[ -e "$SOCKET" ]] && { log "X socket ready after ${i}s."; break; }
+    sleep 1
+done
+[[ -e "$SOCKET" ]] || { log "ERROR: X socket never appeared ($SOCKET)."; exit 1; }
+sleep 2
+
+log "Open the Termux:X11 app (display :1) to see $APP."
+wait "$X11_PID"
+log "Session ended."
+KAPPEOF
+    chmod +x "$f"
+    print_success "Installed 'kdapp' (single-app launcher)."
+}
+
+# Optional: Chromium + the per-backend launchers worked out in our history.
+install_optional_browser() {
+    banner
+    echo ""
+    echo -e "  ${BOLD}Optional: ${Y}Chromium browser${NC}"
+    echo -e "  Install Chromium plus launch helpers for the two GPU paths we debugged:"
+    echo -e "    ${C}chromium-vgl.sh${NC}    VirGL (stable, default for Chrome on Termux:X11)"
+    echo -e "    ${C}chromium-turnip.sh${NC} Turnip via ANGLE-Vulkan (fast, WebGL can be flaky)"
+    echo ""
+    while true; do
+        read -r -p "${Y}Install Chromium + launchers? [y/N]: ${NC}" ans
+        case "${ans,,}" in
+            y|yes) break ;;
+            n|no|"") print_msg "Skipping Chromium."; return 0 ;;
+            *) log_warn "Invalid input, enter y or n." ;;
+        esac
+    done
+
+    package_install_and_check "chromium"
+
+    local vgl="$TERMUX_PREFIX/bin/chromium-vgl.sh"
+    cat > "$vgl" <<'VGL'
+#!/data/data/com.termux/files/usr/bin/bash
+# chromium-vgl.sh - Chromium on VirGL (stable for Termux:X11)
+set -uo pipefail
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISPLAY="${DISPLAY:-:0}"
+command -v qt6ct >/dev/null 2>&1 && export QT_QPA_PLATFORMTHEME=qt6ct
+exec env GALLIUM_DRIVER=virpipe DISPLAY="$DISPLAY" "$PREFIX/bin/chromium" \
+    --use-gl=desktop --disable-gpu-vsync --disable-frame-rate-limit \
+    --ignore-gpu-blocklist --disable-gpu-process-crash-limit "$@"
+VGL
+    chmod +x "$vgl"
+
+    local ntv="$TERMUX_PREFIX/bin/chromium-turnip.sh"
+    cat > "$ntv" <<'NTV'
+#!/data/data/com.termux/files/usr/bin/bash
+# chromium-turnip.sh - Chromium on Turnip via ANGLE-Vulkan (fast; WebGL flaky)
+set -uo pipefail
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DISPLAY="${DISPLAY:-:0}"
+command -v qt6ct >/dev/null 2>&1 && export QT_QPA_PLATFORMTHEME=qt6ct
+exec env DISPLAY="$DISPLAY" "$PREFIX/bin/chromium" \
+    --use-angle=vulkan --use-vulkan=native \
+    --enable-features=Vulkan,VaapiVideoDecoder \
+    --enable-gpu-rasterization --enable-zero-copy \
+    --ignore-gpu-blocklist "$@"
+NTV
+    chmod +x "$ntv"
+    print_success "Installed Chromium + chromium-vgl.sh / chromium-turnip.sh."
+}
+
 ###############################################################################
 #
 #  Finish / usage
@@ -557,6 +676,9 @@ print_usage() {
     echo -e "    ${G}kdestart software${NC}  Launch with software rendering (diagnostic)"
     echo -e "    ${G}kdestart --nogpu${NC}   Launch without GPU env"
     echo -e "    ${G}kdestop${NC}            Stop the Plasma/X11 session"
+    echo -e "    ${G}kdapp konsole${NC}      Launch ONE app (Konsole) in a light session"
+    echo -e "    ${G}chromium-vgl.sh${NC}    Chromium on VirGL (if Chromium installed)"
+    echo -e "    ${G}chromium-turnip.sh${NC} Chromium on Turnip via ANGLE-Vulkan (if installed)"
     echo ""
     echo -e "  Open the ${BOLD}Termux:X11${NC} Android app after running kdestart."
     echo -e "  Get Termux:X11: ${C}https://github.com/termux/termux-x11/releases${NC}"
@@ -597,6 +719,10 @@ main() {
     create_kdestart
     create_kdestop
     create_completions
+    create_kdapp
+
+    # Optional Chromium + GPU launchers (asked only when interactive)
+    install_optional_browser
 
     print_usage
 }

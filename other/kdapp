@@ -1,0 +1,72 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# kdapp - launch ONE app in a lightweight Termux:X11 session (no full Plasma).
+#
+# Why: a single app (e.g. Konsole) launched without any window manager is a
+# tiny, non-resizable window with no decorations. This starts a minimal Openbox
+# window manager so the app is movable/resizable, plus qt6ct theming so Qt apps
+# aren't flat white with no icons.
+#
+# Usage:
+#   kdapp konsole
+#   kdapp dolphin
+#   kdapp chromium
+#
+# PITFALL (from our history): never `pkill -f <app>` here — this script's own
+# name/args can contain the app name and kill itself (the `launch-konsole.sh`
+# self-kill). We only match via the explicit "-xstartup ... APP" pattern.
+set -uo pipefail
+
+readonly TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+readonly TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
+readonly LOG_FILE="$TERMUX_HOME/kdapp-session.log"
+readonly APP="${1:-konsole}"
+
+: > "$LOG_FILE"
+log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+
+log "Starting single-app session: $APP (GPU: ${GALLIUM_DRIVER:-zink})"
+
+# Cleanup — match ONLY the specific startup invocation, never bare $APP
+pkill -f "exit-with-session $APP" 2>/dev/null
+pkill -f "termux-x11 :1" 2>/dev/null
+sleep 1
+rm -f "$TERMUX_PREFIX/tmp/.X1-lock" "$TERMUX_PREFIX/tmp/.X11-unix/X1" 2>/dev/null
+
+export DISPLAY=:1
+export XDG_RUNTIME_DIR="$TERMUX_HOME/.runtime"
+mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+
+# Qt theming bridge (colors + icons outside full Plasma)
+if command -v qt6ct >/dev/null 2>&1; then
+    export QT_QPA_PLATFORMTHEME=qt6ct
+fi
+
+# PulseAudio (same fix family as kdestart)
+pulseaudio --kill 2>/dev/null; sleep 1
+rm -rf "$TERMUX_HOME/.config/pulse"
+mkdir -p "$TMPDIR/pulse"; chmod 700 "$TMPDIR/pulse"
+export PULSE_RUNTIME_PATH="$TMPDIR/pulse"
+unset PULSE_SERVER
+pulseaudio --start --exit-idle-time=-1 --disable-shm=1 \
+    --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
+    >>"$LOG_FILE" 2>&1
+sleep 1
+export PULSE_SERVER=127.0.0.1
+
+log "Launching termux-x11 :1 with Openbox + $APP..."
+termux-x11 :1 -xstartup \
+    "dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'" \
+    >>"$LOG_FILE" 2>&1 &
+X11_PID=$!
+
+SOCKET="$TERMUX_PREFIX/tmp/.X11-unix/X1"
+for i in $(seq 1 20); do
+    [[ -e "$SOCKET" ]] && { log "X socket ready after ${i}s."; break; }
+    sleep 1
+done
+[[ -e "$SOCKET" ]] || { log "ERROR: X socket never appeared ($SOCKET)."; exit 1; }
+sleep 2
+
+log "Open the Termux:X11 app (display :1) to see $APP."
+wait "$X11_PID"
+log "Session ended."
