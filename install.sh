@@ -528,15 +528,34 @@ case "$GPU_MODE" in
 esac
 
 # 6. Session to start
+STARTUP_HELPER="$TERMUX_PREFIX/bin/kdestart-xstartup"
+APP_STARTUP_HELPER="$TERMUX_PREFIX/bin/kdestart-app-xstartup"
+mkdir -p "$TERMUX_PREFIX/bin"
 if [[ "$MODE" == "app" ]]; then
-    XSTARTUP="dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'"
+    cat > "$APP_STARTUP_HELPER" <<EOF
+#!/data/data/com.termux/files/usr/bin/bash
+set -uo pipefail
+exec dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && ${APP} --nofork'
+EOF
+    chmod +x "$APP_STARTUP_HELPER"
+    XSTARTUP="$APP_STARTUP_HELPER"
     log "Launching termux-x11 with Openbox + $APP..."
 else
-    XSTARTUP="dbus-launch --exit-with-session sh -c 'if command -v kbuildsycoca6 >/dev/null 2>&1; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true; fi; exec startplasma-x11'"
+    cat > "$STARTUP_HELPER" <<'PLASMAX'
+#!/data/data/com.termux/files/usr/bin/bash
+set -uo pipefail
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+fi
+exec dbus-launch --exit-with-session startplasma-x11
+PLASMAX
+    chmod +x "$STARTUP_HELPER"
+    XSTARTUP="$STARTUP_HELPER"
     log "Launching termux-x11 with Plasma..."
 fi
 ensure_kwin_breeze_theme
-termux-x11 ":$DISPLAY_NUM" -xstartup "$XSTARTUP" >>"$LOG_FILE" 2>&1 &
+export TERMUX_X11_XSTARTUP="$XSTARTUP"
+termux-x11 ":$DISPLAY_NUM" >>"$LOG_FILE" 2>&1 &
 X11_PID=$!
 
 # Ask Termux:X11 to show the full surface area so Plasma titlebars/panel are
