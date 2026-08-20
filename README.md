@@ -25,6 +25,14 @@ No root, no proot, no chroot — this runs KDE Plasma directly on top of native 
 
 ## Installation
 
+### Quick install (curl one-liner)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marufmoinuddin/termux-kde-plasma/main/install.sh | bash
+```
+
+### Manual install (clone first)
+
 ```bash
 pkg install git -y
 git clone https://github.com/marufmoinuddin/termux-kde-plasma
