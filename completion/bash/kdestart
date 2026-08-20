@@ -11,6 +11,7 @@ _kdestart_completions() {
     case "$prev" in
         --app)
             # Offer common Termux desktop apps
+            # shellcheck disable=SC2207
             COMPREPLY=($(compgen -W "konsole dolphin chromium firefox kate" -- "$cur"))
             return 0
             ;;
