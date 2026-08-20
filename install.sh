@@ -498,8 +498,10 @@ case "$GPU_MODE" in
         export vblank_mode=0
         mkdir -p "$TERMUX_HOME/.cache/mesa_shader_cache"
         export MESA_SHADER_CACHE_DIR="$TERMUX_HOME/.cache/mesa_shader_cache"
-        # Avoid Zink globalShareContext KWin crash (compositor only)
-        [[ "$MODE" == "plasma" ]] && export KWIN_COMPOSE=Q
+        # Avoid Zink globalShareContext KWin compositor crash.
+        # Applied in ALL plasma modes: on this hardware the GL compositor fails
+        # regardless of driver (also with virgl), so force XRender/QPainter.
+        export KWIN_COMPOSE=Q
         log "Zink + Turnip configured."
         ;;
     virgl)
