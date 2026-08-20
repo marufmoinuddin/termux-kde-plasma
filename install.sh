@@ -417,9 +417,9 @@ sleep 1
 rm -f "$TERMUX_PREFIX/tmp/.X0-lock" "$TERMUX_PREFIX/tmp/.X1-lock" \
       "$TERMUX_PREFIX/tmp/.X11-unix/X0" "$TERMUX_PREFIX/tmp/.X11-unix/X1" 2>/dev/null
 
-# 3. Core X env
+# 3. Core X env (XDG_RUNTIME_DIR mirrors termux-desktop's tx11start: $TERMUX_PREFIX/tmp)
 export DISPLAY=":$DISPLAY_NUM"
-export XDG_RUNTIME_DIR="$TERMUX_HOME/.runtime"
+export XDG_RUNTIME_DIR="$TERMUX_PREFIX/tmp"
 mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 export XAUTHORITY="${TERMUX_PREFIX}/tmp/.Xauthority"
 [[ "$MODE" == "app" ]] && command -v qt6ct >/dev/null 2>&1 && export QT_QPA_PLATFORMTHEME=qt6ct
@@ -448,6 +448,7 @@ case "$GPU_MODE" in
         # Turnip Vulkan ICD (Adreno) - native path
         export VK_ICD_FILENAMES="$TERMUX_PREFIX/share/vulkan/icd.d/freedreno_icd.aarch64.json"
         export TU_DEBUG=noconform
+        export MESA_LOADER_DRIVER_OVERRIDE=zink
         export MESA_VK_WSI_PRESENT_MODE=immediate
         export vblank_mode=0
         mkdir -p "$TERMUX_HOME/.cache/mesa_shader_cache"
