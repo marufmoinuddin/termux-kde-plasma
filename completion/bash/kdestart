@@ -1,0 +1,23 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# bash completion for kdestart
+# Install: copy to $PREFIX/etc/bash_completion.d/kdestart or source from ~/.bashrc
+
+_kdestart_completions() {
+    local cur prev
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD - 1]}"
+
+    case "$prev" in
+        kdestart)
+            # shellcheck disable=SC2207
+            COMPREPLY=($(compgen -W "zink virgl software --nogpu --help" -- "$cur"))
+            return 0
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+complete -F _kdestart_completions kdestart

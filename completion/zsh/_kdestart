@@ -1,0 +1,18 @@
+#compdef kdestart
+
+# zsh completion for kdestart
+# Install: place in ~/.zsh/completions/ (with 'fpath' including it) and run compinit
+
+_kdestart() {
+    local -a opts
+    opts=(
+        'zink[Launch with Turnip+Zink GPU acceleration]'
+        'virgl[Launch with VirGL fallback]'
+        'software[Launch with software rendering (diagnostic)]'
+        '--nogpu[Launch without GPU environment]'
+        '--help[Show help]'
+    )
+    _describe 'kdestart options' opts
+}
+
+_kdestart "$@"

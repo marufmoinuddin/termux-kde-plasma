@@ -1,4 +1,9 @@
+# Logs
 *.log
+
+# Temp
 *.tmp
 .DS_Store
+
+# Local config state (generated at install time on the device)
 .config/termux-kde-plasma/

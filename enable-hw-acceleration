@@ -1,0 +1,64 @@
+#!/data/data/com.termux/files/usr/bin/bash
+###############################################################################
+# enable-hw-acceleration
+# Sourced helper: sets the correct Mesa GPU environment for the selected mode.
+# Used by 'kdestart' to keep GPU env logic in one place and reusable.
+#
+# Usage (inside a launch script):
+#   source "$PREFIX/lib/termux-kde-plasma/enable-hw-acceleration"
+#   enable_hw_acceleration <zink|virgl|software|--nogpu>
+#
+# Inspired by sabamdarif/termux-desktop's enable-hw-acceleration module.
+###############################################################################
+
+# Guard: only define once
+if declare -F enable_hw_acceleration >/dev/null 2>&1; then
+    # shellcheck disable=SC2317
+    return 0 2>/dev/null || exit 0
+fi
+
+enable_hw_acceleration() {
+    local mode="${1:-zink}"
+    local TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    local TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
+    local gpu_name="${GPU_NAME:-adreno}"
+
+    case "$mode" in
+        zink)
+            export GALLIUM_DRIVER=zink
+            export MESA_NO_ERROR=1
+            export MESA_GL_VERSION_OVERRIDE=4.3COMPAT
+            export MESA_GLES_VERSION_OVERRIDE=3.2
+            if [[ "$gpu_name" == "adreno" ]]; then
+                # Adreno 6xx/8xx use the combined Zink+Turnip ICD package
+                export VK_ICD_FILENAMES="$TERMUX_PREFIX/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+                export TU_DEBUG=noconform
+            fi
+            export MESA_VK_WSI_PRESENT_MODE=immediate
+            export vblank_mode=0
+            mkdir -p "$TERMUX_HOME/.cache/mesa_shader_cache"
+            export MESA_SHADER_CACHE_DIR="$TERMUX_HOME/.cache/mesa_shader_cache"
+            # Work around KWin 'globalShareContext' crash seen on Zink
+            export KWIN_COMPOSE=Q
+            ;;
+        virgl)
+            export GALLIUM_DRIVER=virpipe
+            export MESA_NO_ERROR=1
+            export MESA_GL_VERSION_OVERRIDE=4.3COMPAT
+            export MESA_GLES_VERSION_OVERRIDE=3.2
+            export LIBGL_DRI3_DISABLE=1
+            export VIRGL_GPU_NUM=1
+            pkill -f virgl_test_server 2>/dev/null
+            virgl_test_server_android --use-egl-surfaceless --use-gles >/dev/null 2>&1 &
+            ;;
+        software|--nogpu)
+            export GALLIUM_DRIVER=llvmpipe
+            export LIBGL_ALWAYS_SOFTWARE=1
+            ;;
+        *)
+            echo "enable_hw_acceleration: unknown mode '$mode' (zink|virgl|software|--nogpu)" >&2
+            return 1
+            ;;
+    esac
+    return 0
+}
