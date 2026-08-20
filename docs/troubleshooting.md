@@ -74,9 +74,12 @@ Usually a stale `ksycoca` cache ("package corruption" that isn't):
 DISPLAY=:0 kbuildsycoca6 --noincremental
 ```
 
-If still missing, it may be the `KWIN_COMPOSE=Q` (XRender) compositor mode on
-your GPU — test with `unset KWIN_COMPOSE` and `kdestart virgl`, or reinstall the
-KDE stack for consistency.
+If the top of the desktop is being hidden by the Android app chrome instead of a
+true missing-decoration bug, `kdestart` now also requests `fullscreen=false`
+through `termux-x11-preference` before Plasma starts. That restores the visible
+surface on devices that force Termux:X11 into fullscreen mode. If you want to
+keep fullscreen manually, set `TERMUX_KDE_PLASMA_FULLSCREEN=true` before
+launching `kdestart`.
 
 ## Keyboard types wrong characters
 

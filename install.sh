@@ -431,6 +431,39 @@ mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 export XAUTHORITY="${TERMUX_PREFIX}/tmp/.Xauthority"
 [[ "$MODE" == "app" ]] && command -v qt6ct >/dev/null 2>&1 && export QT_QPA_PLATFORMTHEME=qt6ct
 
+ensure_kwin_breeze_theme() {
+    local kwinrc="$TERMUX_HOME/.config/kwinrc"
+    mkdir -p "$TERMUX_HOME/.config"
+    if grep -q '^\[org\.kde\.kdecoration2\]$' "$kwinrc" 2>/dev/null && \
+       grep -q '^theme=Breeze$' "$kwinrc" 2>/dev/null; then
+        return 0
+    fi
+    cat >> "$kwinrc" <<'KWINRC'
+
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+KWINRC
+}
+
+apply_termux_x11_preferences() {
+    # Termux:X11 fullscreen can hide the top strip (titlebars/menu) behind the
+    # Android app chrome on some devices/ROMs. Disable it unless the user
+    # explicitly opts out, so Plasma starts with the full visible surface.
+    case "${TERMUX_KDE_PLASMA_FULLSCREEN:-false}" in
+        1|true|yes|on)
+            log "Termux:X11 fullscreen override enabled by user; skipping preference repair."
+            return 0
+            ;;
+    esac
+    if command -v termux-x11-preference >/dev/null 2>&1; then
+        termux-x11-preference "fullscreen"="false" >>"$LOG_FILE" 2>&1 || true
+        log "Requested Termux:X11 windowed mode (fullscreen=false)."
+    else
+        log "termux-x11-preference not found; skipping fullscreen repair."
+    fi
+}
+
 # 4. PulseAudio
 termux-wake-lock 2>/dev/null || true
 pulseaudio --kill 2>/dev/null; sleep 1
@@ -495,6 +528,11 @@ else
 fi
 termux-x11 ":$DISPLAY_NUM" -xstartup "$XSTARTUP" >>"$LOG_FILE" 2>&1 &
 X11_PID=$!
+
+# Ask Termux:X11 to show the full surface area so Plasma titlebars/panel are
+# not hidden under the app chrome on devices that launch in fullscreen mode.
+sleep 2
+apply_termux_x11_preferences
 
 # 7. Wait for X socket
 SOCKET="$TERMUX_PREFIX/tmp/.X11-unix/X${DISPLAY_NUM}"
