@@ -1,64 +1,100 @@
 # Troubleshooting
 
+Worked through live against Snapdragon 8 Elite (Adreno 830) and Snapdragon 870
+(Adreno 650). Symptom → cause → fix, from most to least common.
+
+## Black screen (Plasma launches, no desktop)
+
+This is far and away the most common failure. In order, check:
+
+### 1. Broken/mixed Mesa GL stack (most common)
+
+Symptom in `~/plasma-raw.log` or a live `startplasma-x11`:
+
+```
+libGL error: failed to create dri screen
+libGL error: failed to load driver: swrast
+kwin_scene_opengl: Creating the OpenGL rendering failed: "Invalid QOpenGLContext::globalShareContext()"
+```
+
+Cause: the old `mesa-zink` tur package shipped a 2023 megadriver that clobbers
+the whole GL path. Fix (bash):
+
+```bash
+pkg remove -y mesa-zink
+apt --fix-broken install -y
+pkg install -y mesa mesa-vulkan-icd-freedreno mesa-vulkan-icd-swrast
+# verify DRI drivers now exist + are current
+ls -la "$PREFIX/lib/dri/"
+```
+
+### 2. Qt6/Plasma version mix
+
+Symptom:
+
+```
+cannot locate symbol "_ZN23QUntypedPropertyBindingC1EP23QPropertyBindingPrivate"
+```
+
+Cause: Plasma plugins built against a newer Qt6 than installed (partial
+upgrade / forced install mixed versions). Fix:
+
+```bash
+pkg clean
+pkg update -y
+pkg upgrade -y
+pkg reinstall -y mesa mesa-vulkan-icd-freedreno qt6-qtbase qt6-qtdeclarative
+```
+
+### 3. GL compositor (even with good drivers)
+
+The `Invalid QOpenGLContext::globalShareContext()` line can persist even with a
+correct driver — KWin's GL compositor fails through Zink on Adreno. `kdestart`
+sets `KWIN_COMPOSE=Q` (XRender/QPainter) in all plasma modes to work around it.
+If you're launching manually, add `export KWIN_COMPOSE=Q`.
+
 ## "$DISPLAY is not set" / X server never appears
 
-This is the most common failure and almost always one of:
-
-1. **Stale X lock or socket** — `kdestart` removes `$PREFIX/tmp/.X0-lock` and the
-   `$PREFIX/tmp/.X11-unix/X0` socket on every launch. If you're running an old
-   manual script, make sure it clears both.
-2. **Missing `XDG_RUNTIME_DIR`** — `kdestart` sets it explicitly. Without it the
-   X server sometimes fails to register the display socket.
-3. **Termux:X11 app not opened/ready** — the Android app must be launched at
-   least once so it can accept the connection on display `:0`.
-4. **Stale X server registration** — force-stop and clear cache on both Termux
-   and Termux:X11 in Android app settings, then retry.
+1. **Stale X lock/socket** — `kdestart` clears `.X0-lock` + `.X11-unix/X0`.
+2. **Missing `XDG_RUNTIME_DIR`** — `kdestart` sets it explicitly.
+3. **Termux:X11 app not ready** — open the Android app once before launching.
+4. **Stale registration** — force-stop + clear cache on Termux and Termux:X11.
 
 ## PulseAudio "Daemon startup failed"
 
-`kdestart` clears `~/.config/pulse` and sets a dedicated `PULSE_RUNTIME_PATH`
-under `$TMPDIR` on each launch. If you still see it, check `~/plasma-session.log`
-and confirm no other PulseAudio instance is holding the runtime dir.
-
-## Black screen / KWin crash after ~1–2 minutes
-
-The Zink `globalShareContext` compositor bug. `zink` mode sets `KWIN_COMPOSE=Q`.
-If it persists, switch to `kdestart virgl`.
+`kdestart` clears `~/.config/pulse` and uses a dedicated `PULSE_RUNTIME_PATH`
+under `$TMPDIR` each launch. Verify with `pactl info` and check
+`~/plasma-session.log`.
 
 ## Missing window title bars / borders
 
-Usually a stale `ksycoca` cache after package updates:
+Usually a stale `ksycoca` cache ("package corruption" that isn't):
 
 ```bash
 DISPLAY=:0 kbuildsycoca6 --noincremental
 ```
 
+If still missing, it may be the `KWIN_COMPOSE=Q` (XRender) compositor mode on
+your GPU — test with `unset KWIN_COMPOSE` and `kdestart virgl`, or reinstall the
+KDE stack for consistency.
+
 ## Keyboard types wrong characters
 
-- Toggle **"Hardware keyboard scancodes workaround"** in the Termux:X11 app's
-  own settings (opposite of its current state), then relaunch the app.
-- For a fully scrambled layout, force the layout inside the session:
-  ```bash
-  setxkbmap us   # or your layout code
-  ```
-- If input freezes after switching apps, tap **Alt** once to wake focus.
+- Toggle **"Hardware keyboard scancodes workaround"** in the Termux:X11 app
+  settings (opposite of its current state), then relaunch the app.
+- For a scrambled layout: `setxkbmap us` (or your layout).
+- If input freezes after app-switch, tap **Alt** once to wake focus.
 
-`kdestart` auto-runs `setxkbmap "$XKB_DEFAULT_LAYOUT"` (default `us`).
-
-## "Software rendering in use" despite `zink`
-
-1. Confirm the ICD exists: `ls $PREFIX/share/vulkan/icd.d/`
-2. Confirm the renderer: `glxinfo -B | grep -i renderer` → should say `zink`/
-   `Turnip`, not `llvmpipe`.
-3. On Adreno 6xx+, install the **combined** package
-   `mesa-zink-vulkan-icd-freedreno` rather than separate mesa/vulkan ICDs.
+`kdestart` auto-runs `setxkbmap "$XKB_DEFAULT_LAYOUT"` when `setxkbmap` is
+installed (part of `xorg-setxkbmap`).
 
 ## Termux gets killed in the background
 
-Phantom Process Killer (Android 12+). See
+Android's **Phantom Process Killer** (Android 12+), not a real OOM kill. See
 [disable-phantom-process-killing.md](disable-phantom-process-killing.md).
 
 ## Log files
 
 - `~/kde-plasma-install.log` — installer output
 - `~/plasma-session.log` — each `kdestart` run
+- `~/kdestart-app-session.log` — each `kdestart --app` run

@@ -1,35 +1,36 @@
 # termux-kde-plasma
 
 One-click installer for **native** KDE Plasma on Termux — no root, no proot, no
-chroot. It runs Plasma directly on top of Termux's own userland and renders
-through **Termux:X11**, with GPU acceleration via **Turnip (Vulkan) + Zink
-(GL-over-Vulkan)**, **VirGL**, or software fallback.
+chroot. Runs Plasma directly on Termux's own userland, rendered through
+**Termux:X11** with hardware acceleration.
 
-Tuned and tested for Adreno-based Snapdragon devices (Snapdragon 870 / Adreno
-650, Snapdragon 8 Elite / Adreno 830), with graceful fallbacks for Mali,
-Xclipse, and unknown GPUs.
+**GPU-aware by design:** auto-detects your SoC and installs the right stack —
+native **Turnip + Zink** for Adreno (Snapdragon 8 Elite / 800-series and other
+Adreno), **VirGL** for Mali/MediaTek/Xclipse. One command, no fiddling.
+
+Inspired by the structure of
+[sabamdarif/termux-desktop](https://github.com/sabamdarif/termux-desktop) and
+[LinuxDroidMaster/Termux-Desktops](https://github.com/LinuxDroidMaster/Termux-Desktops),
+scoped tightly to a KDE Plasma + Turnip/Zink/VirGL + Termux:X11 workflow.
 
 ---
 
 ## Features
 
 - **One command install**: `curl -fsSL ... | bash` — fully self-contained.
-- **Automatic GPU setup** — detects your SoC (`adreno`/`mali`/`xclipse`/`other`)
-  with a manual fallback prompt, then installs the right Mesa driver stack.
-- **Selectable, remembered GPU mode** (`zink`/`virgl`/`software`) persisted to
+- **GPU auto-detect** (`getprop`): Adreno → native Turnip+Zink; Mali/Xclipse →
+  VirGL; manual fallback prompt.
+- **Selectable, persisted GPU mode** (`zink`/`virgl`/`software`) saved to
   `~/.config/termux-kde-plasma/config`.
-- **`kdestart` / `kdestop` helper commands** installed to `$PREFIX/bin` — no flags
-  to remember; option parsing + bash/zsh completions included.
-- **`kdestart --konsole` / `kdestart --app <name>`** — run Konsole/Dolphin/etc. in
-  a lightweight Openbox session (resizable window + theming) without full Plasma.
-- **Chromium GPU launchers** (optional) — `chromium-vgl.sh` (stable VirGL) and
-  `chromium-turnip.sh` (Turnip via ANGLE-Vulkan), fixing the black-window bug.
-- **PulseAudio fixed out of the box** (clears stale config, sets a clean runtime
-  dir) — resolves the common *"Daemon startup failed"*.
-- **KWin crash workaround** for the Zink `globalShareContext` bug.
-- **Colored logging + package retry with recovery** for flaky repo/network
-  installs; detects both `apt`/`pkg` and `pacman` package managers.
-- **Docs & helpers** mirroring the structure of `sabamdarif/termux-desktop`.
+- **`kdestart` / `kdestop` helpers** installed to `$PREFIX/bin`, with bash + zsh
+  completions.
+- **`kdestart --konsole` / `--app <name>`** — single-app lightweight Openbox
+  sessions with theming, no full Plasma.
+- **PulseAudio fixed out of the box** (clears stale config, clean runtime dir).
+- **Compositor workaround** (`KWIN_COMPOSE=Q`) in all plasma modes so Plasma
+  renders even when KWin's GL compositor can't init on the GPU.
+- **apt / pkg / pacman** with retry + recovery.
+- **Optional Chromium** launchers (`chromium-vgl.sh` / `chromium-turnip.sh`).
 
 ---
 
@@ -38,10 +39,9 @@ Xclipse, and unknown GPUs.
 - Android 8.0 or newer
 - [Termux](https://github.com/termux/termux-app/releases) — **F-Droid or GitHub
   build** (not the sandboxed Play Store build)
-- [Termux:X11](https://github.com/termux/termux-x11/releases) app installed
-- ~3GB free RAM and ~3–4GB free storage
-- Android 12+: disable the Phantom Process Killer — otherwise Plasma gets
-  silently killed in the background → see
+- [Termux:X11](https://github.com/termux/termux-x11/releases) app
+- ~3GB free RAM, ~3–4GB free storage
+- Android 12+: disable the Phantom Process Killer →
   [docs/disable-phantom-process-killing.md](docs/disable-phantom-process-killing.md)
 
 ---
@@ -54,8 +54,8 @@ Xclipse, and unknown GPUs.
 curl -fsSL https://raw.githubusercontent.com/marufmoinuddin/termux-kde-plasma/main/install.sh | bash
 ```
 
-The script is self-contained: it writes every helper it needs into `$PREFIX/bin`,
-so streaming it with `curl | bash` behaves identically to running it from a clone.
+Self-contained: it writes every helper into `$PREFIX/bin`, so streaming behaves
+identically to running from a clone.
 
 ### Manual (clone first)
 
@@ -73,45 +73,53 @@ bash install.sh
 
 ## Usage
 
-After install, these commands are available anywhere in Termux:
-
 ```bash
-kdestart           # Launch Plasma with Turnip+Zink (your saved default)
-kdestart virgl     # Launch with VirGL fallback
-kdestart software  # Launch with software rendering (diagnostic)
-kdestart --konsole # Launch Konsole-only in a light Openbox session
+kdestart             # Launch Plasma with your saved default mode (zink on Adreno)
+kdestart zink        # Launch Plasma on native Turnip+Zink
+kdestart virgl       # Launch Plasma on VirGL (Mali/MediaTek/Xclipse, or fallback)
+kdestart software    # Launch Plasma with software rendering (diagnostic)
+kdestart --konsole   # Konsole-only lightweight Openbox session
 kdestart --app dolphin  # Launch any single app in a light Openbox session
-kdestart --nogpu   # Launch without the GPU env
-kdestart --help    # Show usage
-kdestop            # Stop the Plasma / Termux:X11 session
-chromium-vgl.sh    # Chromium on VirGL (if Chromium installed)
-chromium-turnip.sh # Chromium on Turnip via ANGLE-Vulkan (if Chromium installed)
+kdestart --nogpu     # Launch Plasma without the GPU env
+kdestart --help
+kdestop              # Stop the Plasma / Termux:X11 session
+chromium-vgl.sh      # Chromium on VirGL (if installed)
+chromium-turnip.sh   # Chromium on Turnip via ANGLE-Vulkan (if installed)
 ```
 
-Run `kdestart`, then open the **Termux:X11** Android app — it connects to
-display `:0` automatically. During install you'll be asked whether to also set
-up Chromium + its GPU-accelerated launchers.
+Run `kdestart`, then open the **Termux:X11** app — it connects to display `:0`.
 
 ---
 
 ## GPU modes
 
-| Mode       | Stack                                        | Best for                                       |
-|------------|----------------------------------------------|------------------------------------------------|
-| `zink`     | Turnip + Zink (GL-over-Vulkan)               | Adreno 6xx / 8xx — default, best performance   |
-| `virgl`    | virglrenderer / ANGLE                        | Mali, Xclipse, or where Zink is unstable       |
-| `software` | llvmpipe                                     | Diagnostics only                               |
+| GPU              | Recommended mode | Stack                                      |
+|------------------|------------------|--------------------------------------------|
+| Adreno (SD 6xx/7xx/8xx) | `zink`    | Turnip (Vulkan) + Zink (GL-over-Vulkan)     |
+| Mali / Xclipse / others | `virgl`    | virglrenderer / ANGLE passthrough           |
+| Any (diagnostic) | `software`       | llvmpipe                                    |
 
-See [docs/hw-acceleration.md](docs/hw-acceleration.md) for verification commands
-(`glxinfo`, `glmark2`) and the "why is it still llvmpipe?" checklist.
+The installer chooses the default based on detection; override any time with a
+positional argument (`kdestart virgl`). Details & verification in
+[docs/hw-acceleration.md](docs/hw-acceleration.md).
 
 ---
 
-## Apps & theming
+## Troubleshooting
 
-Chromium black-window fixes, single-app `kdestart --konsole` sessions, the
-`pkill` self-kill pitfall, and Qt theming outside Plasma are all documented in
-[docs/apps-and-theming.md](docs/apps-and-theming.md).
+The full playbook (worked through on Adreno 830 + Adreno 650) is in
+[docs/troubleshooting.md](docs/troubleshooting.md). Quick hits:
+
+| Symptom                                          | Fix |
+|--------------------------------------------------|-----|
+| Black screen, `failed to create dri screen`      | Remove old `mesa-zink`; reinstall `mesa mesa-vulkan-icd-freedreno` |
+| Black screen, `cannot locate symbol _ZN23QUntyped...` | Qt6/Plasma version mix → `pkg upgrade` + reinstall Qt6/Plasma |
+| `globalShareContext` compositor error            | Already handled by `KWIN_COMPOSE=Q` in `kdestart` |
+| `$DISPLAY is not set`                            | `kdestart` cleans lock/socket + sets `XDG_RUNTIME_DIR` |
+| PulseAudio "Daemon startup failed"               | Auto-clears `~/.config/pulse` + clean runtime dir |
+| Missing title bars                               | `DISPLAY=:0 kbuildsycoca6 --noincremental` |
+| Keyboard wrong chars                             | Toggle scancodes in Termux:X11 settings, or `setxkbmap us` |
+| Background kill / phantom process                | [Disable Phantom Process Killer](docs/disable-phantom-process-killing.md) |
 
 ---
 
@@ -124,45 +132,25 @@ completion/
   bash/kdestart          # bash completion
   zsh/_kdestart          # zsh completion
 docs/
-  hw-acceleration.md     # GPU modes, verification, driver notes
+  hw-acceleration.md     # GPU strategy, verification, driver notes
   disable-phantom-process-killing.md
-  troubleshooting.md     # every issue we hit, with fixes
+  troubleshooting.md     # the full black-screen/debug playbook
   apps-and-theming.md    # Chromium GPU paths, --konsole, pkill pitfall, Qt theming
 other/
   setup-bash             # optional bash env tweaks
+  kd-gpu-detect          # standalone GPU detection helper
   chromium-vgl.sh        # Chromium on VirGL (also generated by install.sh)
   chromium-turnip.sh     # Chromium on Turnip via ANGLE-Vulkan
 ```
 
 ---
 
-## Troubleshooting
-
-TL;DR cover of the most common issues — full detail in
-[docs/troubleshooting.md](docs/troubleshooting.md):
-
-| Symptom                                    | Fix |
-|--------------------------------------------|-----|
-| `$DISPLAY is not set` / empty black screen | Clear stale `~/.config/pulse` + X lock; open Termux:X11 app; try `kdestart virgl` |
-| "Daemon startup failed" (PulseAudio)       | `kdestart` auto-clears pulse config + runtime dir |
-| Black screen / crash after ~1–2 min        | Zink `globalShareContext` bug → `kdestart` sets `KWIN_COMPOSE=Q`; else `kdestart virgl` |
-| Missing window title bars                  | `DISPLAY=:0 kbuildsycoca6 --noincremental` |
-| Keyboard types wrong chars                 | Toggle "Hardware keyboard scancodes workaround" in Termux:X11 settings; or `setxkbmap us` |
-| Background kill / phantom process          | [Phantom Process Killer](docs/disable-phantom-process-killing.md) — Android 12+ |
-| "Software rendering" despite `zink`        | Install combined `mesa-zink-vulkan-icd-freedreno` (Adreno 6xx+) |
-
-Log files:
-
-- `~/kde-plasma-install.log` — installer output
-- `~/plasma-session.log` — each `kdestart` run
-
----
-
 ## Credits
 
-Inspired by the structure and conventions of
-[sabamdarif/termux-desktop](https://github.com/sabamdarif/termux-desktop),
-scoped specifically to a KDE Plasma + Turnip/Zink/VirGL workflow.
+- [sabamdarif/termux-desktop](https://github.com/sabamdarif/termux-desktop) —
+  installer structure, retry/recovery, config model, GPU-env module.
+- [LinuxDroidMaster/Termux-Desktops](https://github.com/LinuxDroidMaster/Termux-Desktops) —
+  native Termux:X11 launch patterns (`am start`, `PULSE_SERVER`/`XDG_RUNTIME_DIR`).
 
 ## License
 
