@@ -19,7 +19,7 @@ GPU in your device and the mode `kdestart` is launched with.
   `virgl_test_server_android` so GL is virtualized over EGL.
 - `software` → forces `LIBGL_ALWAYS_SOFTWARE=1` for troubleshooting.
 
-## Verifying acceleration
+## Verify acceleration
 
 Inside the Plasma session (Konsole):
 
@@ -38,6 +38,34 @@ glmark2
 
 Scores in the hundreds (vs. single/low double digits for llvmpipe) confirm the
 GPU is doing the work.
+
+## Black screen on Adreno 6xx/8xx? Use VirGL (important)
+
+If Plasma launches to a **black screen** (even though `glxinfo` shows
+`zink ... Adreno` working), the cause is KWin's compositor: it fails to create a
+shared OpenGL context through Zink at startup:
+
+```
+kwin_scene_opengl: Creating the OpenGL rendering failed:  "Invalid QOpenGLContext::globalShareContext()"
+```
+
+This is the known Zink **compositor** fragility on Adreno. The fix that the
+installer bakes in is `KWIN_COMPOSE=Q` (XRender/QPainter compositing), and the
+**stable daily-driver fallback is VirGL**:
+
+```bash
+kdestart virgl
+```
+
+`kdestart virgl` routes the whole session through `virpipe`/`virgl_test_server`
+which does not hit the broken shared-context path. Individual GPU-heavy apps can
+still be launched on Zink/Turnip separately (e.g. `chromium-turnip.sh`).
+
+Recommended test order on Adreno 6xx/8xx:
+
+1. `kdestart virgl` first — confirms a stable session.
+2. If you want Zink's compositor performance, try `kdestart zink`
+   (`KWIN_COMPOSE=Q` is set automatically).
 
 ## Why KWin crash / black screen can still happen
 

@@ -326,11 +326,15 @@ install_core_packages() {
 install_gpu_packages() {
     case "$GPU_NAME" in
         adreno)
-            print_msg "GPU: Adreno — installing Turnip + Zink stack..."
-            # Combined Zink/Turnip package for Adreno 6xx/8xx
+            print_msg "GPU: Adreno — installing Turnip + Zink + VirGL stack..."
+            # Zink/Turnip for individual apps; VirGL for the compositor/session.
+            # History: on Adreno 6xx/8xx the Zink compositor (globalShareContext)
+            # crashes → black screen, so VirGL is the stable daily driver. Always
+            # install both so `kdestart virgl` works as the stable fallback.
             package_install_and_check \
                 "mesa mesa-zink-vulkan-icd-freedreno mesa-vulkan-icd-freedreno \
-                 vulkan-loader-generic mesa-demos glmark2"
+                 vulkan-loader-generic mesa-demos glmark2 \
+                 virglrenderer virglrenderer-android angle-android"
             ;;
         mali)
             print_msg "GPU: Mali — installing Mesa + VirGL (Mali GLES lacks desktop GL)..."
