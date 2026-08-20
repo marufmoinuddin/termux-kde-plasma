@@ -5,7 +5,7 @@
 
 _kdestart() {
     local -a opts
-    # shellcheck disable=SC2034 -- zsh completion uses opts via _describe
+    # shellcheck disable=SC2034
     opts=(
         'zink[Launch Plasma with native Turnip+Zink GPU acceleration]'
         'virgl[Launch Plasma with VirGL fallback]'
