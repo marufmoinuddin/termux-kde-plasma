@@ -526,6 +526,7 @@ else
     XSTARTUP="dbus-launch --exit-with-session startplasma-x11"
     log "Launching termux-x11 with Plasma..."
 fi
+ensure_kwin_breeze_theme
 termux-x11 ":$DISPLAY_NUM" -xstartup "$XSTARTUP" >>"$LOG_FILE" 2>&1 &
 X11_PID=$!
 
