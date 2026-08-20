@@ -74,12 +74,14 @@ Usually a stale `ksycoca` cache ("package corruption" that isn't):
 DISPLAY=:0 kbuildsycoca6 --noincremental
 ```
 
-If the top of the desktop is being hidden by the Android app chrome instead of a
-true missing-decoration bug, `kdestart` now also requests `fullscreen=false`
-through `termux-x11-preference` before Plasma starts. That restores the visible
-surface on devices that force Termux:X11 into fullscreen mode. If you want to
-keep fullscreen manually, set `TERMUX_KDE_PLASMA_FULLSCREEN=true` before
-launching `kdestart`.
+If titlebars still don't appear, `kdestart` now also runs
+`kbuildsycoca6 --noincremental` before `startplasma-x11`, matching the final
+repair step from the tutorial. If you want to test whether the compositor
+workaround is what is flattening decorations, try:
+
+```bash
+TERMUX_KDE_PLASMA_KWIN_COMPOSE=unset kdestart
+```
 
 ## Keyboard types wrong characters
 

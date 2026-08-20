@@ -28,7 +28,8 @@ scoped tightly to a KDE Plasma + Turnip/Zink/VirGL + Termux:X11 workflow.
   sessions with theming, no full Plasma.
 - **PulseAudio fixed out of the box** (clears stale config, clean runtime dir).
 - **Compositor workaround** (`KWIN_COMPOSE=Q`) in all plasma modes so Plasma
-  renders even when KWin's GL compositor can't init on the GPU.
+  renders even when KWin's GL compositor can't init on the GPU. You can test the
+  guide's decoration fix path with `TERMUX_KDE_PLASMA_KWIN_COMPOSE=unset`.
 - **apt / pkg / pacman** with retry + recovery.
 - **Optional Chromium** launchers (`chromium-vgl.sh` / `chromium-turnip.sh`).
 

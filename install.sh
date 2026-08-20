@@ -434,6 +434,11 @@ export XAUTHORITY="${TERMUX_PREFIX}/tmp/.Xauthority"
 ensure_kwin_breeze_theme() {
     local kwinrc="$TERMUX_HOME/.config/kwinrc"
     mkdir -p "$TERMUX_HOME/.config"
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file "$kwinrc" --group org.kde.kdecoration2 --key library org.kde.breeze
+        kwriteconfig6 --file "$kwinrc" --group org.kde.kdecoration2 --key theme Breeze
+        return 0
+    fi
     if grep -q '^\[org\.kde\.kdecoration2\]$' "$kwinrc" 2>/dev/null && \
        grep -q '^theme=Breeze$' "$kwinrc" 2>/dev/null; then
         return 0
@@ -495,7 +500,9 @@ case "$GPU_MODE" in
         export MESA_SHADER_CACHE_DIR="$TERMUX_HOME/.cache/mesa_shader_cache"
         # KWin's GL compositor fails through Zink on this hardware -> force
         # XRender/QPainter so Plasma renders (applies to ALL plasma modes).
-        export KWIN_COMPOSE=Q
+        if [[ "${TERMUX_KDE_PLASMA_KWIN_COMPOSE:-Q}" != "unset" ]]; then
+            export KWIN_COMPOSE="${TERMUX_KDE_PLASMA_KWIN_COMPOSE:-Q}"
+        fi
         log "Zink + Turnip configured."
         ;;
     virgl)
@@ -507,7 +514,9 @@ case "$GPU_MODE" in
         export VIRGL_GPU_NUM=1
         pkill -f virgl_test_server 2>/dev/null
         virgl_test_server_android --use-egl-surfaceless --use-gles >/dev/null 2>&1 &
-        export KWIN_COMPOSE=Q
+        if [[ "${TERMUX_KDE_PLASMA_KWIN_COMPOSE:-Q}" != "unset" ]]; then
+            export KWIN_COMPOSE="${TERMUX_KDE_PLASMA_KWIN_COMPOSE:-Q}"
+        fi
         log "VirGL configured."
         ;;
     software)
@@ -523,7 +532,7 @@ if [[ "$MODE" == "app" ]]; then
     XSTARTUP="dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'"
     log "Launching termux-x11 with Openbox + $APP..."
 else
-    XSTARTUP="dbus-launch --exit-with-session startplasma-x11"
+    XSTARTUP="dbus-launch --exit-with-session sh -c 'if command -v kbuildsycoca6 >/dev/null 2>&1; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true; fi; exec startplasma-x11'"
     log "Launching termux-x11 with Plasma..."
 fi
 ensure_kwin_breeze_theme
