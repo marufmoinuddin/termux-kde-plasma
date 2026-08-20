@@ -1,0 +1,52 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# kd-diag - dump everything relevant to a black-screen on KDE Plasma/Termux:X11
+# Paste the output back to the operator.
+
+echo "========== [1] Environment =========="
+echo "PREFIX=$PREFIX  HOME=$HOME  arch=$(uname -m)"
+echo "--- package manager ---"
+termux-setup-package-manager 2>/dev/null; echo "TERMUX_APP_PACKAGE_MANAGER=${TERMUX_APP_PACKAGE_MANAGER:-<unset>}"
+
+echo; echo "========== [2] Relevant packages installed =========="
+pkg list-installed 2>/dev/null | grep -iE \
+  "termux-x11|plasma-desktop|plasma-workspace|kwin|x11-repo|tur-repo|mesa|zink|turnip|freedreno|virgl|angle|breeze|konsole|openbox|qt6ct" \
+  | sort || echo "(pkg list-installed failed)"
+
+echo; echo "========== [3] Mesa driver files present =========="
+echo "--- vulkan ICDs ---"
+ls -la "$PREFIX/share/vulkan/icd.d/" 2>&1
+echo "--- freedreno json ---"
+ls -la "$PREFIX/share/vulkan/icd.d/"*freedreno* 2>&1
+echo "--- virgl server ---"
+command -v virgl_test_server_android 2>&1 || echo "virgl_test_server_android NOT FOUND"
+echo "--- mesa driver libs ---"
+# shellcheck disable=SC2010
+for _l in "$PREFIX"/lib/dri/*; do
+    case "${_l##*/}" in zink*|llvmpipe*|vir*|swrast*) echo "${_l##*/}";; esac
+done | sort || echo "(none)"
+
+echo; echo "========== [4] Session log (last 60 lines) =========="
+tail -n 60 "$HOME/plasma-session.log" 2>&1 || echo "no plasma-session.log"
+
+echo; echo "========== [5] Any prior kdestart-app log =========="
+tail -n 40 "$HOME/kdestart-app-session.log" 2>&1 || echo "no kdestart-app-session.log"
+
+echo; echo "========== [6] termux-x11 stderr/stdout (if captured) =========="
+ls -la "$HOME"/*.log 2>&1
+
+echo; echo "========== [7] Running processes (x11/plasma/kwin) =========="
+pgrep -a -f "termux-x11|startplasma|kwin|plasmashell|kded|dbus|virgl" 2>&1 || echo "(none matching)"
+
+echo; echo "========== [8] Stale X files =========="
+ls -la "$PREFIX/tmp/.X0-lock" "$PREFIX/tmp/.X11-unix/" 2>&1
+
+echo; echo "========== [9] Config file =========="
+echo "--- ~/.config/termux-kde-plasma/config ---"
+cat "$HOME/.config/termux-kde-plasma/config" 2>&1 || echo "(no config)"
+
+echo; echo "========== [10] Disk space (Plasma is ~4GB+) =========="
+df -h "$HOME" 2>&1
+
+echo
+echo "========== CAPTURE COMPLETE =========="
+echo "Paste everything above back to the operator."
