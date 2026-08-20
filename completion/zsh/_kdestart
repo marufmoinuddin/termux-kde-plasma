@@ -4,6 +4,7 @@
 # Install: place in ~/.zsh/completions/ (with 'fpath' including it) and run compinit
 
 _kdestart() {
+    # shellcheck disable=SC2034 # zsh completion uses opts via _describe
     local -a opts
     opts=(
         'zink[Launch Plasma with native Turnip+Zink GPU acceleration]'
