@@ -304,7 +304,7 @@ install_core_packages() {
     package_install_and_check \
         "termux-x11-nightly pulseaudio dbus \
          plasma-desktop plasma-workspace plasma-integration plasma-pa \
-         kwin-x11 kdecoration breeze breeze-icons \
+         kwin-x11 kdecoration breeze kf6-breeze-icons \
          konsole dolphin kio-extras kde-cli-tools \
          xorg-xrandr xorg-setxkbmap openbox qt6ct"
 }
