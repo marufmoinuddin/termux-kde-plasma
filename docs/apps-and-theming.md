@@ -49,20 +49,21 @@ ANGLE-over-Vulkan frequently triggers context loss** on Turnip — if a page say
 
 ---
 
-## Single-app sessions with `kdapp` (no full Plasma)
+## Single-app sessions with `kdestart --konsole` / `kdestart --app`
 
 Sometimes you just want Konsole/Dolphin without Plasma's process overhead
 (which also keeps you safely under Android's phantom-process ceiling).
 
 ```bash
-kdapp konsole
-kdapp dolphin
-kdapp chromium
+kdestart --konsole          # Konsole in a light Openbox session
+kdestart --app dolphin      # any single app
+kdestart --app chromium
 ```
 
-`kdapp` starts a minimal **Openbox** window manager (so the app is movable and
+These start a minimal **Openbox** window manager (so the app is movable and
 resizable — a bare app is a tiny, non-resizable window otherwise), plus
-**qt6ct** theming so the app isn't flat white.
+**qt6ct** theming so the app isn't flat white. GPU mode still applies from your
+saved config or a prefix argument (`kdestart --konsole virgl`).
 
 ### The `pkill` self-kill pitfall
 
@@ -70,7 +71,7 @@ A big gotcha from our history: a launcher script named `launch-konsole.sh` that
 ran `pkill -f konsole` **killed itself**, because `pkill -f` matches the full
 command line and the script's own name/path contained "konsole".
 
-`kdapp` avoids this by only matching the exact startup invocation
+`kdestart` avoids this by only matching the exact startup invocation
 (`pkill -f "exit-with-session <app>"`), never bare `<app>`. If you write your
 own launcher, always keep this in mind: **never `pkill -f <app>` when the app
 name appears in your script's own path or arguments.**
@@ -88,9 +89,10 @@ export QT_QPA_PLATFORMTHEME=qt6ct
 DISPLAY=:1 qt6ct                # pick Style = Breeze, Icon theme = breeze
 ```
 
-`kdapp` sets `QT_QPA_PLATFORMTHEME=qt6ct` automatically and installs `qt6ct`
-during setup. Inside a full Plasma session this is unnecessary — Plasma handles
-theming itself and provides the window decorators.
+`kdestart --konsole` / `kdestart --app` sets `QT_QPA_PLATFORMTHEME=qt6ct`
+automatically and installs `qt6ct` during setup. Inside a full Plasma session
+this is unnecessary — Plasma handles theming itself and provides the window
+decorators.
 
 ---
 

@@ -364,15 +364,19 @@ create_kdestart() {
     print_msg "Writing $BOLD$f$NC"
     cat > "$f" <<'LAUNCHEOF'
 #!/data/data/com.termux/files/usr/bin/bash
-# kdestart - Launch native KDE Plasma via Termux:X11
-# Usage: kdestart [zink|virgl|software|--nogpu|--help]
+# kdestart - Launch KDE Plasma (full desktop) or a single app via Termux:X11
+# Usage:
+#   kdestart                        full Plasma, saved/default GPU mode
+#   kdestart zink|virgl|software    full Plasma with a specific GPU mode
+#   kdestart --konsole              Konsole-only lightweight session (Openbox)
+#   kdestart --app <name>           any single app lightweight session (Openbox)
+#   kdestart --nogpu                full Plasma without the GPU env
+#   kdestart --help
 set -uo pipefail
 
 readonly TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
 readonly TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-readonly LOG_FILE="$TERMUX_HOME/plasma-session.log"
 readonly CONFIG_FILE="$TERMUX_HOME/.config/termux-kde-plasma/config"
-readonly DISPLAY_NUM=0
 
 # Load persisted defaults — but NEVER `source` the raw file. Old configs
 # contained unquoted timestamp lines (e.g. `INSTALLED_AT=2026-08-20 22:09:12`)
@@ -388,7 +392,6 @@ if [[ -f "$CONFIG_FILE" ]]; then
     GPU_MODE="$(_load_key GPU_MODE)"                     # legacy key
     XKB_DEFAULT_LAYOUT="$(_load_key XKB_DEFAULT_LAYOUT)"
 fi
-GPU_MODE="${1:-${KDESTART_GPU_MODE:-${GPU_MODE:-zink}}}"
 XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-us}"
 
 log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG_FILE"; }
@@ -402,31 +405,66 @@ if [[ "$TRACER_PID" != "0" && -n "$TRACER_PID" ]]; then
     fi
 fi
 
+# --- Argument parsing -------------------------------------------------------
+MODE="plasma"                 # plasma | app
+APP="konsole"                 # for --konsole / --app
+GPU_ARG=""
+usage() {
+    cat <<'HELP'
+kdestart                        full Plasma, saved/default GPU mode
+kdestart zink|virgl|software    full Plasma with a specific GPU mode
+kdestart --konsole              Konsole-only lightweight session (Openbox)
+kdestart --app <name>           any single app lightweight session (Openbox)
+kdestart --nogpu                full Plasma without the GPU env
+kdestart --help                 this help
+HELP
+    exit 0
+}
 case "${1:-}" in
-    --help|-h)
-        echo "kdestart [zink|virgl|software]   Launch Plasma via Termux:X11"
-        echo "  --help        show this help"
-        exit 0;;
+    --help|-h)        usage ;;
+    --konsole)        MODE="app"; APP="konsole" ;;
+    --app)            MODE="app"; shift; APP="${1:-}" ;;
+    --nogpu)          GPU_ARG="software" ;;
+    zink|virgl|software) GPU_ARG="$1" ;;
+    *)
+        if [[ -n "${1:-}" ]]; then
+            echo "kdestart: unknown argument '$1' (try --help)" >&2; exit 1
+        fi
+        ;;
 esac
+if [[ "$MODE" == "app" && -z "$APP" ]]; then
+    echo "kdestart: --app requires a name, e.g. kdestart --app dolphin" >&2; exit 1
+fi
+
+readonly DISPLAY_NUM=0
+GPU_MODE="${GPU_ARG:-${KDESTART_GPU_MODE:-${GPU_MODE:-zink}}}"
+LOG_FILE="$TERMUX_HOME/plasma-session.log"
+[[ "$MODE" == "app" ]] && LOG_FILE="$TERMUX_HOME/kdestart-app-session.log"
 
 : > "$LOG_FILE"
-log "Starting Plasma (GPU mode: $GPU_MODE)"
+log "Starting $( [[ "$MODE" == "app" ]] && echo "single-app ($APP)" || echo "Plasma" ) (GPU mode: $GPU_MODE)"
 
-# 1. Kill stale session
+# 1. Kill stale session (match only specific patterns, never $APP alone)
 pkill -f termux-x11 2>/dev/null
 pkill -f startplasma-x11 2>/dev/null
 pkill -f dbus-launch 2>/dev/null
+pkill -f "exit-with-session $APP" 2>/dev/null
 sleep 1
 
-# 2. Clean stale X files
-rm -rf "$TERMUX_PREFIX/tmp/.X${DISPLAY_NUM}-lock" \
-       "$TERMUX_PREFIX/tmp/.X11-unix/X${DISPLAY_NUM}" 2>/dev/null
+# 2. Clean stale X files (both :0 and :1)
+rm -rf "$TERMUX_PREFIX/tmp/.X0-lock" "$TERMUX_PREFIX/tmp/.X1-lock" \
+       "$TERMUX_PREFIX/tmp/.X11-unix/X0" "$TERMUX_PREFIX/tmp/.X11-unix/X1" 2>/dev/null
 
 # 3. Core X environment
 export DISPLAY=":${DISPLAY_NUM}"
 export XDG_RUNTIME_DIR="$TERMUX_HOME/.runtime"
 mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 export XAUTHORITY="${TERMUX_PREFIX}/tmp/.Xauthority"
+
+# Single-app sessions get Qt theming (colors/icons outside full Plasma)
+if [[ "$MODE" == "app" ]] && command -v qt6ct >/dev/null 2>&1; then
+    export QT_QPA_PLATFORMTHEME=qt6ct
+fi
 
 # 4. PulseAudio (fixes "Daemon startup failed")
 termux-wake-lock 2>/dev/null || true
@@ -441,12 +479,13 @@ pulseaudio --start --exit-idle-time=-1 --disable-shm=1 \
     >>"$LOG_FILE" 2>&1
 sleep 2
 export PULSE_SERVER=127.0.0.1
-pulseaudio --check >/dev/null 2>&1 \
-    && log "PulseAudio started." || log "WARN: PulseAudio did not start."
+if pulseaudio --check >/dev/null 2>&1; then
+    log "PulseAudio started."
+else
+    log "WARN: PulseAudio did not start."
+fi
 
 # 5. GPU acceleration env
-NOGPU=0
-if [[ "$GPU_MODE" == "--nogpu" ]]; then NOGPU=1; GPU_MODE=software; fi
 case "$GPU_MODE" in
     zink)
         export GALLIUM_DRIVER=zink
@@ -459,8 +498,8 @@ case "$GPU_MODE" in
         export vblank_mode=0
         mkdir -p "$TERMUX_HOME/.cache/mesa_shader_cache"
         export MESA_SHADER_CACHE_DIR="$TERMUX_HOME/.cache/mesa_shader_cache"
-        # Avoid Zink globalShareContext KWin crash
-        export KWIN_COMPOSE=Q
+        # Avoid Zink globalShareContext KWin crash (compositor only)
+        [[ "$MODE" == "plasma" ]] && export KWIN_COMPOSE=Q
         log "Zink + Turnip configured."
         ;;
     virgl)
@@ -475,20 +514,27 @@ case "$GPU_MODE" in
         log "VirGL configured."
         ;;
     software)
-        export LIBGL_ALWAYS_SOFTWARE=1
         export GALLIUM_DRIVER=llvmpipe
+        export LIBGL_ALWAYS_SOFTWARE=1
         log "Software (llvmpipe) mode - diagnostics only."
         ;;
     *)
         echo "Unknown GPU_MODE '$GPU_MODE'. Use zink, virgl, software, or --nogpu." >&2
         exit 1;;
 esac
-if [[ "$NOGPU" -eq 1 ]]; then export LIBGL_ALWAYS_SOFTWARE=1; fi
 
-# 6. Start Termux:X11 and wait for socket
-log "Launching termux-x11 on display :$DISPLAY_NUM..."
-termux-x11 ":$DISPLAY_NUM" -xstartup "dbus-launch --exit-with-session startplasma-x11" >>"$LOG_FILE" 2>&1 &
+# 6. Pick the session to start
+if [[ "$MODE" == "app" ]]; then
+    XSTARTUP="dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'"
+    log "Launching termux-x11 with Openbox + $APP..."
+else
+    XSTARTUP="dbus-launch --exit-with-session startplasma-x11"
+    log "Launching termux-x11 with Plasma..."
+fi
+termux-x11 ":$DISPLAY_NUM" -xstartup "$XSTARTUP" >>"$LOG_FILE" 2>&1 &
 X11_PID=$!
+
+# 7. Wait for X socket
 SOCKET="$TERMUX_PREFIX/tmp/.X11-unix/X${DISPLAY_NUM}"
 for i in $(seq 1 20); do
     [[ -e "$SOCKET" ]] && { log "X socket ready after ${i}s."; break; }
@@ -500,12 +546,12 @@ if [[ ! -e "$SOCKET" ]]; then
 fi
 sleep 2
 
-# 7. Keyboard layout
+# 8. Keyboard layout
 export DISPLAY=":$DISPLAY_NUM"
 setxkbmap "$XKB_DEFAULT_LAYOUT" 2>>"$LOG_FILE" \
     && log "Keyboard layout: $XKB_DEFAULT_LAYOUT"
 
-# 8. Best-effort renderer check
+# 9. Best-effort renderer check
 if command -v glxinfo >/dev/null 2>&1; then
     RENDERER=$(DISPLAY=:$DISPLAY_NUM glxinfo -B 2>>"$LOG_FILE" | grep -i "OpenGL renderer" || true)
     log "Renderer: ${RENDERER:-unknown}"
@@ -514,7 +560,7 @@ if command -v glxinfo >/dev/null 2>&1; then
     fi
 fi
 
-log "Open the Termux:X11 Android app now to see Plasma."
+log "Open the Termux:X11 Android app now to see $( [[ "$MODE" == "app" ]] && echo "$APP" || echo "Plasma" )."
 wait "$X11_PID"
 log "termux-x11 exited. Session ended."
 LAUNCHEOF
@@ -553,78 +599,11 @@ _kdestart_completions() {
     local cur
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    COMPREPLY=($(compgen -W "zink virgl software --nogpu --help" -- "$cur"))
+    COMPREPLY=($(compgen -W "zink virgl software --konsole --app --nogpu --help" -- "$cur"))
 }
 complete -F _kdestart_completions kdestart
 BCOMP
     print_success "Wrote bash completion for kdestart."
-}
-
-create_kdapp() {
-    local f="$TERMUX_PREFIX/bin/kdapp"
-    print_msg "Writing $BOLD$f$NC"
-    cat > "$f" <<'KAPPEOF'
-#!/data/data/com.termux/files/usr/bin/bash
-# kdapp - launch ONE app in a lightweight Termux:X11 session (no full Plasma).
-# Adds a minimal Openbox window manager (resize/move) + qt6ct theming.
-#   kdapp konsole | kdapp dolphin | kdapp chromium
-# PITFALL: never `pkill -f <app>` here — the script could match its own args
-# and self-kill (the launch-konsole.sh bug). Match the -xstartup pattern only.
-set -uo pipefail
-
-readonly TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-readonly TERMUX_HOME="${HOME:-/data/data/com.termux/files/home}"
-readonly LOG_FILE="$TERMUX_HOME/kdapp-session.log"
-readonly APP="${1:-konsole}"
-
-: > "$LOG_FILE"
-log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG_FILE"; }
-log "Starting single-app session: $APP"
-
-pkill -f "exit-with-session $APP" 2>/dev/null
-pkill -f "termux-x11 :1" 2>/dev/null
-sleep 1
-rm -f "$TERMUX_PREFIX/tmp/.X1-lock" "$TERMUX_PREFIX/tmp/.X11-unix/X1" 2>/dev/null
-
-export DISPLAY=:1
-export XDG_RUNTIME_DIR="$TERMUX_HOME/.runtime"
-mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
-
-if command -v qt6ct >/dev/null 2>&1; then
-    export QT_QPA_PLATFORMTHEME=qt6ct
-fi
-
-pulseaudio --kill 2>/dev/null; sleep 1
-rm -rf "$TERMUX_HOME/.config/pulse"
-mkdir -p "$TMPDIR/pulse"; chmod 700 "$TMPDIR/pulse"
-export PULSE_RUNTIME_PATH="$TMPDIR/pulse"
-unset PULSE_SERVER
-pulseaudio --start --exit-idle-time=-1 --disable-shm=1 \
-    --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
-    >>"$LOG_FILE" 2>&1
-sleep 1
-export PULSE_SERVER=127.0.0.1
-
-log "Launching termux-x11 :1 with Openbox + $APP..."
-termux-x11 :1 -xstartup \
-    "dbus-launch --exit-with-session sh -c 'openbox & sleep 1 && $APP --nofork'" \
-    >>"$LOG_FILE" 2>&1 &
-X11_PID=$!
-
-SOCKET="$TERMUX_PREFIX/tmp/.X11-unix/X1"
-for i in $(seq 1 20); do
-    [[ -e "$SOCKET" ]] && { log "X socket ready after ${i}s."; break; }
-    sleep 1
-done
-[[ -e "$SOCKET" ]] || { log "ERROR: X socket never appeared ($SOCKET)."; exit 1; }
-sleep 2
-
-log "Open the Termux:X11 app (display :1) to see $APP."
-wait "$X11_PID"
-log "Session ended."
-KAPPEOF
-    chmod +x "$f"
-    print_success "Installed 'kdapp' (single-app launcher)."
 }
 
 # Optional: Chromium + the per-backend launchers worked out in our history.
@@ -690,14 +669,15 @@ print_usage() {
     print_success "KDE Plasma installed & configured for GPU: $GPU_NAME"
     echo ""
     echo -e "  ${BOLD}Commands:${NC}"
-    echo -e "    ${G}kdestart${NC}           Launch Plasma with ${C}${KDESTART_GPU_MODE}${NC} (default)"
-    echo -e "    ${G}kdestart virgl${NC}     Launch with VirGL fallback"
-    echo -e "    ${G}kdestart software${NC}  Launch with software rendering (diagnostic)"
-    echo -e "    ${G}kdestart --nogpu${NC}   Launch without GPU env"
-    echo -e "    ${G}kdestop${NC}            Stop the Plasma/X11 session"
-    echo -e "    ${G}kdapp konsole${NC}      Launch ONE app (Konsole) in a light session"
-    echo -e "    ${G}chromium-vgl.sh${NC}    Chromium on VirGL (if Chromium installed)"
-    echo -e "    ${G}chromium-turnip.sh${NC} Chromium on Turnip via ANGLE-Vulkan (if installed)"
+    echo -e "    ${G}kdestart${NC}              Launch Plasma with ${C}${KDESTART_GPU_MODE}${NC} (default)"
+    echo -e "    ${G}kdestart virgl${NC}        Launch Plasma with VirGL fallback"
+    echo -e "    ${G}kdestart software${NC}     Launch Plasma with software rendering (diagnostic)"
+    echo -e "    ${G}kdestart --konsole${NC}    Launch Konsole-only in a light Openbox session"
+    echo -e "    ${G}kdestart --app name${NC}   Launch ONE app in a light Openbox session"
+    echo -e "    ${G}kdestart --nogpu${NC}      Launch without GPU env"
+    echo -e "    ${G}kdestop${NC}               Stop the Plasma/X11 session"
+    echo -e "    ${G}chromium-vgl.sh${NC}       Chromium on VirGL (if Chromium installed)"
+    echo -e "    ${G}chromium-turnip.sh${NC}    Chromium on Turnip via ANGLE-Vulkan (if installed)"
     echo ""
     echo -e "  Open the ${BOLD}Termux:X11${NC} Android app after running kdestart."
     echo -e "  Get Termux:X11: ${C}https://github.com/termux/termux-x11/releases${NC}"
@@ -738,7 +718,6 @@ main() {
     create_kdestart
     create_kdestop
     create_completions
-    create_kdapp
 
     # Optional Chromium + GPU launchers (asked only when interactive)
     install_optional_browser
