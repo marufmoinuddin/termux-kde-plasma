@@ -55,6 +55,7 @@ log_error()  { echo -e "${R}[xx]${NC} $*" | tee -a "$LOG_FILE"; }
 print_success() { echo -e "${G}[✓]${NC} $*" | tee -a "$LOG_FILE"; }
 print_failed()  { echo -e "${R}[☓]${NC} $*" | tee -a "$LOG_FILE"; }
 print_msg()     { echo -e "${BOLD}[•]${NC} $*" | tee -a "$LOG_FILE"; }
+print_warn()    { echo -e "${Y}[!!]${NC} $*" | tee -a "$LOG_FILE"; }
 
 banner() {
     echo ""
@@ -257,11 +258,17 @@ ask_gpu_model() {
 }
 
 ask_gpu_mode() {
-    # Default matches the detected hardware; allow override on non-interactive CLI
+    # Default matches the detected hardware; allow override when interactive.
     case "$GPU_NAME" in
         adreno) KDESTART_GPU_MODE="zink" ;;
         *)      KDESTART_GPU_MODE="virgl" ;;
     esac
+    # Non-interactive (curl | bash): keep the hardware-appropriate default,
+    # honor a saved config, and skip the prompting menu entirely.
+    if [[ ! -t 0 ]]; then
+        print_success "Default GPU mode: $KDESTART_GPU_MODE (auto, non-interactive)"
+        return 0
+    fi
     banner
     print_warn "Default GPU mode for 'kdestart':"
     echo -e "\n  ${C}1. zink${NC}      Turnip+Zink native (Adreno 6xx/8xx) fastest"
@@ -629,8 +636,8 @@ print_usage() {
     echo -e "  Open the ${BOLD}Termux:X11${NC} app after running kdestart."
     echo -e "  Get Termux:X11: ${C}https://github.com/termux/termux-x11/releases${NC}"
     echo ""
-    echo -e "  Install log: ${B}$LOG_FILE${NC}"
-    echo -e "  Session log: ${B}$TERMUX_HOME/plasma-session.log${NC}"
+    echo -e "  Install log: ${Y}$LOG_FILE${NC}"
+    echo -e "  Session log: ${Y}$TERMUX_HOME/plasma-session.log${NC}"
 }
 
 ###############################################################################
