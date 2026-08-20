@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #compdef kdestart
 
 # zsh completion for kdestart
