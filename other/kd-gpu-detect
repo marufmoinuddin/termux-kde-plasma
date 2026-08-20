@@ -1,0 +1,26 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# kd-gpu-detect - print the detected GPU family (adreno/mali/xclipse/others)
+# and the suggested default accelerator. Reusable standalone.
+#
+#   kd-gpu-detect          -> e.g. "adreno" (or "unknown")
+#   kd-gpu-detect --mode   -> print suggested kdestart mode (zink/virgl)
+
+detect_gpu() {
+    local hw vulkan soc plat blob
+    hw="$(getprop ro.hardware 2>/dev/null)"
+    vulkan="$(getprop ro.hardware.vulkan 2>/dev/null)"
+    soc="$(getprop ro.soc.model 2>/dev/null)"
+    plat="$(getprop ro.board.platform 2>/dev/null)"
+    blob="${hw} ${vulkan} ${soc} ${plat}"
+    if echo "$blob" | grep -qEiq "adreno|qcom|sm8[0-9]|sm[0-9]"; then echo "adreno";
+    elif echo "$blob" | grep -qEiq "mali|mt[0-9]{4}|bifrost|valhall|panfrost"; then echo "mali";
+    elif echo "$blob" | grep -qEiq "xclipse|xs[0-9]+|samsung.*exynos"; then echo "xclipse";
+    else echo "others"; fi
+}
+
+if [[ "${1:-}" == "--mode" ]]; then
+    gpu="$(detect_gpu)"
+    if [[ "$gpu" == "adreno" ]]; then echo "zink"; else echo "virgl"; fi
+else
+    detect_gpu
+fi

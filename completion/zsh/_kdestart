@@ -6,10 +6,12 @@
 _kdestart() {
     local -a opts
     opts=(
-        'zink[Launch with Turnip+Zink GPU acceleration]'
-        'virgl[Launch with VirGL fallback]'
-        'software[Launch with software rendering (diagnostic)]'
-        '--nogpu[Launch without GPU environment]'
+        'zink[Launch Plasma with native Turnip+Zink GPU acceleration]'
+        'virgl[Launch Plasma with VirGL fallback]'
+        'software[Launch Plasma with software rendering (diagnostic)]'
+        '--konsole[Launch Konsole-only in a light Openbox session]'
+        '--app[Launch a single app in a light Openbox session]:app:(konsole dolphin chromium firefox kate)'
+        '--nogpu[Launch without the GPU environment]'
         '--help[Show help]'
     )
     _describe 'kdestart options' opts

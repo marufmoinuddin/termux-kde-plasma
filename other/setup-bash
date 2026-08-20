@@ -1,19 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# setup-bash - subtle bash environment tweaks for Plasma-on-Termux usage.
-# Optional: appends a few helpful defaults to ~/.bashrc if not already present.
-# Idempotent.
-
+# setup-bash - optional, idempotent bash env tweaks for Plasma-on-Termux.
 readonly PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 readonly BASH_RC="${HOME:-/data/data/com.termux/files/home}/.bashrc"
 
-# PulseAudio TCP runtime helper
 if ! grep -q "PULSE_SERVER" "$BASH_RC" 2>/dev/null; then
     cat >> "$BASH_RC" <<'EOF'
 
 # ---- termux-kde-plasma defaults ----
 export PULSE_SERVER=127.0.0.1
 export XDG_RUNTIME_DIR="${TMPDIR:-$PREFIX/tmp}"
-# Faster shader recompile between sessions
 export MESA_SHADER_CACHE_DIR="$HOME/.cache/mesa_shader_cache"
 EOF
     echo "Appended Plasma defaults to $BASH_RC"

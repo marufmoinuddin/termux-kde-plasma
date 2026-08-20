@@ -9,9 +9,14 @@ _kdestart_completions() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
 
     case "$prev" in
+        --app)
+            # Offer common Termux desktop apps
+            COMPREPLY=($(compgen -W "konsole dolphin chromium firefox kate" -- "$cur"))
+            return 0
+            ;;
         kdestart)
             # shellcheck disable=SC2207
-            COMPREPLY=($(compgen -W "zink virgl software --nogpu --help" -- "$cur"))
+            COMPREPLY=($(compgen -W "zink virgl software --konsole --app --nogpu --help" -- "$cur"))
             return 0
             ;;
         *)
