@@ -156,8 +156,14 @@ print_to_config() {
 
 read_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
-        # shellcheck disable=SC1090
-        source "$CONFIG_FILE"
+        # Never `source` raw config — old configs have unquoted timestamp lines
+        # (e.g. INSTALLED_AT=2026-08-20 22:09:12) that break bash. Parse only
+        # the plain one-token KEY=value keys we need.
+        local _k _v
+        for _k in GPU_NAME KDESTART_GPU_MODE XKB_DEFAULT_LAYOUT; do
+            _v=$(grep -E "^${_k}=[^ ]+$" "$CONFIG_FILE" 2>/dev/null | head -n1 | cut -d= -f2-)
+            [[ -n "$_v" ]] && eval "${_k}=\"${_v}\"" 2>/dev/null || true
+        done
         log_debug "Loaded existing config from $CONFIG_FILE"
     fi
 }
@@ -364,12 +370,21 @@ readonly LOG_FILE="$TERMUX_HOME/plasma-session.log"
 readonly CONFIG_FILE="$TERMUX_HOME/.config/termux-kde-plasma/config"
 readonly DISPLAY_NUM=0
 
-# Load persisted defaults
+# Load persisted defaults — but NEVER `source` the raw file. Old configs
+# contained unquoted timestamp lines (e.g. `INSTALLED_AT=2026-08-20 22:09:12`)
+# that bash would word-split and choke on (": command not found"). We parse
+# only the specific plain `KEY=value` keys we need, never eval arbitrary content.
+_load_key() { # $1=key → outputs value if a clean ONE-TOKEN assignment exists
+    local _k="$1" _v=""
+    _v=$(grep -E "^${_k}=[^ ]+$" "$CONFIG_FILE" 2>/dev/null | head -n1 | cut -d= -f2-)
+    [[ -n "$_v" ]] && printf '%s' "$_v"
+}
 if [[ -f "$CONFIG_FILE" ]]; then
-    # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
+    KDESTART_GPU_MODE="$(_load_key KDESTART_GPU_MODE)"
+    GPU_MODE="$(_load_key GPU_MODE)"                     # legacy key
+    XKB_DEFAULT_LAYOUT="$(_load_key XKB_DEFAULT_LAYOUT)"
 fi
-GPU_MODE="${1:-${KDESTART_GPU_MODE:-zink}}"
+GPU_MODE="${1:-${KDESTART_GPU_MODE:-${GPU_MODE:-zink}}}"
 XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-us}"
 
 log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG_FILE"; }
